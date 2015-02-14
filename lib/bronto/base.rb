@@ -66,7 +66,7 @@ module Bronto
     # Will return a header with the same initial session ID unless the `refresh`
     # argument is `true`.
     def self.soap_header(api_key, refresh = false)
-      return @soap_header if !refresh and @soap_header.present? and !session_expired
+      return @soap_header if !refresh and @soap_header.present? and !session_expired and !Rails.env.test?
 
       resp = api.request(:v4, :login) do
         soap.body = { api_token: api_key }
