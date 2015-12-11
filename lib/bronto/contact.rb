@@ -1,46 +1,55 @@
 module Bronto
   class Contact < Base
     attr_accessor :email, :fields, :list_ids, :created, :modified, :status, :num_opens, :num_clicks, :num_sends
-    # Finds contacts based on the `filter` (Bronto::Filter object).
-    # * `page_number` is the page of contacts to request. Bronto doesn't specify how many contacts are returned per page,
-    #    only that you should keep increasing the number until no more contacts are returned.
-    # * `fields` can be an array of field IDs or an array of Field objects.
-    # * `include_lists` determines whether to include the list IDs each contact belongs to.
-    def self.find(filter = Bronto::Filter.new, page_number = 1, fields = nil, include_lists = false, api_key = nil)
-      body = { filter: filter.to_hash, page_number: page_number }
-      api_key = api_key || self.api_key
+    class << self
+      # Finds contacts based on the `filter` (Bronto::Filter object).
+      # * `page_number` is the page of contacts to request. Bronto doesn't specify how many contacts are returned per page,
+      #    only that you should keep increasing the number until no more contacts are returned.
+      # * `fields` can be an array of field IDs or an array of Field objects.
+      # * `include_lists` determines whether to include the list IDs each contact belongs to.
+      def find(filter = Bronto::Filter.new, page_number = 1, fields = nil, include_lists = false, api_key = nil)
+        body = { filter: filter.to_hash, page_number: page_number }
+        api_key = api_key || self.api_key
 
-      body[:fields] = Array.wrap(fields).map { |f| f.is_a?(Bronto::Field) ? f.id : f } if Array(fields).length > 0
-      body[:include_lists] = include_lists
+        body[:fields] = Array.wrap(fields).map { |f| f.is_a?(Bronto::Field) ? f.id : f } if Array(fields).length > 0
+        body[:include_lists] = include_lists
 
-      resp = request(:read, api_key) do
-        soap.body = body
-      end
-
-      Array.wrap(resp[:return]).map { |hash| new(hash) }
-    end
-
-    def self.save(*objs)
-      objs = objs.flatten
-      api_key = objs.first.is_a?(String) ? objs.shift : self.api_key
-
-      resp = request(:add_or_update, api_key) do
-        soap.body = {
-          plural_class_name => objs.map(&:to_hash)
-        }
-      end
-
-      objs.each { |o| o.errors.clear }
-
-      Array.wrap(resp[:return][:results]).each_with_index do |result, i|
-        if result[:is_error]
-          objs[i].errors.add(result[:error_code], result[:error_string])
-        else
-          objs[i].id = result[:id]
+        resp = request(:read, api_key) do
+          soap.body = body
         end
+
+        Array.wrap(resp[:return]).map { |hash| new(hash) }
       end
 
-      objs
+      def save(*objs)
+        prepare_api_response(:add_or_update, objs.flatten)
+      end
+
+      def update(*objs)
+        prepare_api_response(:update, objs.flatten)
+      end
+
+      private
+
+      def prepare_api_response(endpoint, objs)
+        api_key = objs.first.is_a?(String) ? objs.shift : self.api_key
+        resp = request(endpoint, api_key) do
+          soap.body = {
+            plural_class_name => objs.map(&:to_hash)
+          }
+        end
+
+        objs.each { |o| o.errors.clear }
+
+        Array.wrap(resp[:return][:results]).each_with_index do |result, i|
+          if result[:is_error]
+            objs[i].errors.add(result[:error_code], result[:error_string])
+          else
+            objs[i].id = result[:id]
+          end
+        end
+        objs
+      end
     end
 
     def initialize(options = {})
@@ -68,6 +77,10 @@ module Bronto
 
     def save
       self.class.save(self)
+    end
+
+    def update
+      self.class.update(self)
     end
 
     def to_hash
